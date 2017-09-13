@@ -1,0 +1,4 @@
+B ../_build/default/src
+B ../_build/default/src/myExt/src
+FLG -open Automaton -w -40
+S myExt/src

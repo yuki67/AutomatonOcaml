@@ -1,0 +1,9 @@
+B ../_build/default/src
+B ../_build/default/src/myExt/src
+B ../_build/default/test
+FLG -w -40
+PKG oUnit
+PKG oUnit.advanced
+PKG unix
+S ../src
+S ../src/myExt/src

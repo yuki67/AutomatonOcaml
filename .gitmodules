@@ -1,0 +1,3 @@
+[submodule "src/myExt"]
+	path = src/myExt
+	url = git@github.com:yuki67/MyExt.git
