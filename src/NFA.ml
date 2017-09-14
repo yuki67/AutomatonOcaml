@@ -5,66 +5,85 @@ open ListExt
 
 exception InvalidCharacter
 
-type char_like = E | C of char
-type 'state transition = ('state, (char_like, 'state list) HashtblExt.t) HashtblExt.t
-type 'state nfa = {
-  alphabet : char list ;
-  transition : 'state transition ;
-  initial_states : 'state list ;
-  final_states : 'state list ;
+module OrderedInt =
+struct
+  type t = int
+  let compare = Pervasives.compare
+end
+module IntMap = MapExt.Make (OrderedInt)
+
+type char_like = Empty | AnyOther | Char of string
+module OrderedCharLike =
+struct
+  type t = char_like
+  let compare x y =
+    match x, y with
+    | Empty, Empty
+    | AnyOther, AnyOther -> 0
+    | Empty, AnyOther -> 1
+    | AnyOther, Empty -> -1
+    | Char p, Char q -> String.compare p q
+    | _, AnyOther -> 2
+    | _, Empty -> 1
+    | AnyOther, _ -> -2
+    | Empty, _ -> -1
+end
+module CharLikeMap = MapExt.Make (OrderedCharLike)
+
+type state = int
+type transition = (state list CharLikeMap.t) IntMap.t
+type 'a t = {
+  alphabet : string list;
+  transition : transition;
+  initial_states : state list;
+  final_states : state list;
+  dictionary : (state * 'a) list
 }
 
-let collect_states trans_alist =
-  let ans = ref [] in
-  iter
-    (fun (s, alist) ->
-       set_add_ref ans s;
-       iter (fun (_, s) -> ans := union !ans s) alist) trans_alist;
-  !ans
+let lookup_nexts maton (states:state list) (char:char_like) =
+  let next char state =
+    try
+      CharLikeMap.find char (IntMap.find state maton.transition)
+    with Not_found ->
+    try
+      CharLikeMap.find AnyOther (IntMap.find state maton.transition)
+    with Not_found -> [] in
+  unions (map (next char) states)
 
-and lookup_nexts maton states char =
-  unions
-    (map
-       (fun state -> try HashtblExt.find (HashtblExt.find maton.transition state) char with Not_found -> [])
-       states)
-
-let cons alph trans inits finals =
-  let to_assoc tripls =
-    let rec loop acc = function
-      | [] -> acc
-      | (x, y, z)::tl -> loop ((x, (y, z))::acc) tl in
-    loop [] tripls in
-  let trans = assoc_collect (to_assoc trans) in
+let cons ?(dictate=true) alph trans inits finals =
+  let collect_states trans =
+    fold_left (fun acc (s, c, slist) -> union (set_add slist s) acc) [] trans in
+  let to_map triples =
+    let assoc = fold_left (fun acc (x, y, z) -> (hash x, (y, map hash z))::acc) [] triples in
+    let collected = assoc_collect assoc in
+    IntMap.from_alist (map (fun (s, alist) -> (s, CharLikeMap.from_alist alist)) collected) in
+  let dic = if dictate then map (fun s -> (hash s, s)) (collect_states trans) else [] in
   {
     alphabet = alph;
-    transition = from_alist (map (fun (s, alist) -> (s, from_alist alist)) trans);
-    initial_states = inits;
-    final_states = finals
+    transition = to_map trans;
+    initial_states = map hash inits;
+    final_states = map hash finals;
+    dictionary = dic
   }
 
 let saturate maton states =
   let rec loop prev =
-    let to_add = lookup_nexts maton prev E in
+    let to_add = lookup_nexts maton prev Empty in
     if subset to_add prev then prev
     else loop (union to_add prev) in
   loop states
 
 let transit maton states char =
-  saturate maton (lookup_nexts maton (saturate maton states) (C char))
-
-let to_char_like_list str =
-  let rec to_list_rec n l =
-    if n < 0
-    then l
-    else to_list_rec (n - 1) (C str.[n]::l) in
-  to_list_rec (String.length str - 1) []
+  saturate maton (lookup_nexts maton (saturate maton states) (Char char))
 
 let run maton str =
   let now = ref (saturate maton maton.initial_states) in
-  String.iter (fun c ->  now := transit maton !now c) str;
+  for i = 0 to String.length str - 1 do
+    now := transit maton !now (String.sub str i 1)
+  done;
   inter !now maton.final_states <> []
 
-let to_dfa maton =
+let to_dfa = fun maton ->
   let new_init = (saturate maton maton.initial_states) in
   let new_finals =
     if anything_in_common new_init maton.final_states
@@ -81,16 +100,32 @@ let to_dfa maton =
         new_finals := union (filter (anything_in_common maton.final_states) nexts) !new_finals;
         loop (set_add searched state) (union rest (diff nexts (state::searched))) in
   let _ = loop [] [new_init] in
-  DFA.cons maton.alphabet !new_trans new_init !new_finals
+  DFA.cons
+    maton.alphabet
+    (map
+       (fun (s, c, s') ->
+          let s = map (assoc_r maton.dictionary) s in
+          let s' = map (assoc_r maton.dictionary) s' in
+          (s, c, s'))
+       !new_trans)
+    (map (assoc_r maton.dictionary) new_init)
+    (map (map (assoc_r maton.dictionary)) !new_finals)
+
+let any = cons [] [(0, AnyOther, [0])] [0] [0] ~dictate:false
+let just str = cons [str] [(0, Char str, [1])] [0] [1]
 
 let string_of_char_like = function
-  | E -> "ε"
-  | C c -> of_char c
+  | Empty -> "ε"
+  | AnyOther -> "other"
+  | Char c -> c
 
 let print_nfa maton string_of_state =
-  let print_a_to_b a b label =
+  let string_of_state state =
+    try string_of_state (assoc state maton.dictionary)
+    with Not_found -> string_of_int state in
+  let print_a_to_b a c b =
     Printf.printf "\"%s\" -> \"%s\" [label = \"%s\"]\n"
-      (string_of_state a) (string_of_state b) label in
+      (string_of_state a) (string_of_state b) (string_of_char_like c) in
   Printf.printf "digraph finite_state_machine {\n";
   Printf.printf "rankdir=LR\n";
   Printf.printf "node [shape = point] init\n";
@@ -99,8 +134,8 @@ let print_nfa maton string_of_state =
   Printf.printf "\nnode [shape = ellipse, peripheries=1];\n";
   iter (fun s -> Printf.printf "init -> \"%s\"" (string_of_state s)) maton.initial_states;
   Printf.printf "\nnode [shape = ellipse, peripheries=1]\n";
-  HashtblExt.iter
-    (fun s alist -> HashtblExt.iter
-        (fun c s_list -> iter (fun s' -> print_a_to_b s s' (string_of_char_like c)) s_list) alist)
+  IntMap.iter
+    (fun s cmap ->
+       CharLikeMap.iter (fun c slist -> iter (print_a_to_b s c) slist) cmap)
     maton.transition;
   Printf.printf "}\n"

@@ -1,7 +1,6 @@
-type 'state dfa
-exception InvalidCharacter
+type 'state t
 
-val cons : char list -> ('state * char * 'state) list -> 'state -> 'state list -> 'state dfa
-val run : 'state dfa -> string -> bool
-val minimize : 'state dfa -> 'state list dfa
-val print_dfa : 'state dfa -> ('state -> string) -> unit
+val cons : string list -> ('state * string * 'state) list -> 'state -> 'state list -> 'state t
+val run : 'state t -> string -> bool
+val minimize : 'state t -> 'state list t
+val print_dfa : 'state t -> ('state -> string) -> unit

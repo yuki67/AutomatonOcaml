@@ -3,35 +3,48 @@ open StringExt
 open HashtblExt
 open ListExt
 
-exception InvalidCharacter
+module OrderedInt =
+struct
+  type t = int
+  let compare = Pervasives.compare
+end
+module IntMap = MapExt.Make (OrderedInt)
 
-type 'state transition = ('state, (char, 'state) HashtblExt.t) HashtblExt.t
-type 'state dfa = {
-  alphabet : char list;
-  transition : 'state transition;
-  initial_state : 'state;
-  final_states : 'state list;
+module StringMap = MapExt.Make (String)
+
+type state = int
+type transition = (state StringMap.t) IntMap.t
+type 'a t = {
+  alphabet : string list;
+  transition : transition;
+  initial_state : state;
+  final_states : state list;
+  dictionary : (int * 'a) list
 }
 
 let cons alph trans init finals =
-  let to_assoc tripls =
-    let rec loop acc = function
-      | [] -> acc
-      | (x, y, z)::tl -> loop ((x, (y, z))::acc) tl in
-    loop [] tripls in
-  let trans = assoc_collect (to_assoc trans) in
+  let collect_states trans =
+    fold_left (fun acc (s, c, s') -> set_add (set_add acc s) s') [] trans in
+  let to_map triples =
+    let assoc = fold_left (fun acc (x, y, z) -> (hash x, (y, hash z))::acc) [] triples in
+    let collected = assoc_collect assoc in
+    IntMap.from_alist (map (fun (s, alist) -> (s, StringMap.from_alist alist)) collected) in
   {
     alphabet =  alph;
-    transition = (from_alist (map (fun (s, alist) -> (s, from_alist alist)) trans));
-    initial_state = init;
-    final_states = finals;
+    transition = to_map trans;
+    initial_state = hash init;
+    final_states = map hash finals;
+    dictionary = map (fun s -> (hash s, s)) (collect_states trans)
   }
 
-let transit maton state char = HashtblExt.find (HashtblExt.find maton.transition state) char
+let transit maton state char = StringMap.find char (IntMap.find state maton.transition)
 
 let run maton str =
-  let end_state = fold_left (fun state char -> transit maton state char) maton.initial_state (to_list str) in
-  mem end_state maton.final_states
+  let now = ref maton.initial_state in
+  for i = 0 to String.length str - 1 do
+    now := transit maton !now (String.sub str i 1)
+  done;
+  mem !now maton.final_states
 
 let connected_component udgraph v =
   let rec loop acc = function
@@ -40,7 +53,7 @@ let connected_component udgraph v =
     | _ :: tl -> loop acc tl in
   loop [v] udgraph
 
-let minimize (maton : 'state dfa) =
+let minimize maton =
   (* helper functions *)
   let transitable_into marked (p, q) =
     exists
@@ -55,7 +68,7 @@ let minimize (maton : 'state dfa) =
     let origin = find (mem s) new_states
     and next c = find (mem (transit maton s c)) new_states in
     (map (fun c -> origin, c, next c) maton.alphabet) in
-  let states = HashtblExt.keys maton.transition in
+  let states = map (fun (x, _) -> x) (IntMap.bindings maton.transition) in
   let rec loop (marked, unmarked) =
     let to_add = filter (transitable_into marked) unmarked in
     if subset to_add marked then marked, unmarked
@@ -70,7 +83,7 @@ let minimize (maton : 'state dfa) =
   let new_states =
     fold_left_ignore
       (fun acc s -> exists (fun set -> mem s set) acc)
-      (* calculate largest undistinguishable set which contains s *)
+      (* largest undistinguishable set which contains s *)
       (fun acc s -> (connected_component unmarked s) :: acc)
       [] states in
   (* also calculate new transition from new_states *)
@@ -81,14 +94,22 @@ let minimize (maton : 'state dfa) =
       [] states in
   cons
     maton.alphabet
-    new_trans
+    (map
+       (fun (s, c, s') ->
+          let s = map (assoc_r maton.dictionary) s in
+          let s' = map (assoc_r maton.dictionary) s' in
+          (s, c, s'))
+       new_trans)
     (* note : exactly one element of new_states contains maton.initial_state *)
     (find (mem maton.initial_state) new_states)
     (filter (anything_in_common maton.final_states) new_states)
 
 let print_dfa maton string_of_state =
+  let string_of_state state =
+    try string_of_state (assoc state maton.dictionary)
+    with Not_found -> string_of_int state in
   let print_a_to_b a b label =
-    Printf.printf "\"%s\" -> \"%s\" [label = \"%c\"]\n"
+    Printf.printf "\"%s\" -> \"%s\" [label = \"%s\"]\n"
       (string_of_state a) (string_of_state b) label in
   Printf.printf "digraph finite_state_machine {\n";
   Printf.printf "rankdir=LR\n";
@@ -98,7 +119,7 @@ let print_dfa maton string_of_state =
   Printf.printf "\nnode [shape = ellipse, peripheries=1]\n";
   Printf.printf "init -> \"%s\"" (string_of_state maton.initial_state);
   Printf.printf "\nnode [shape = ellipse, peripheries=1]\n";
-  HashtblExt.iter
-    (fun s alist -> HashtblExt.iter (fun c s' -> print_a_to_b s s' c)  alist)
+  IntMap.iter
+    (fun s smap -> StringMap.iter (fun c s' ->  print_a_to_b s s' c) smap)
     maton.transition;
   Printf.printf "}\n"
