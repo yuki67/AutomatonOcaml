@@ -1,5 +1,15 @@
 %{
   open RegexSyntax
+  open MyExt
+  open ListExt
+  let literals lst =
+    let rec literals_rec = function
+      | Any -> ["."]
+      | Char s -> [s]
+      | Repeat re -> "*"::literals_rec re
+      | Anyof lst -> "[" :: "]" :: lst
+      | Concat lst -> "(" :: ")" :: unions (map literals_rec lst) in
+    unions (map literals_rec lst)
 %}
 
 %token ASTER DOT
@@ -27,6 +37,6 @@ atom:
   | DOT                  { Any }
   | ID                   { Char ($1) }
   | atom ASTER           { Repeat ($1) }
-  | LSPAR atoms RSPAR    { Anyof (Regex.literals $2) }
+  | LSPAR atoms RSPAR    { Anyof (literals $2) }
   | LPAR atoms RPAR      { Concat ($2) }
 ;

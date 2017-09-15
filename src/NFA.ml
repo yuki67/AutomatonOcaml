@@ -41,32 +41,43 @@ type 'a t = {
 }
 
 let lookup_nexts maton (states:state list) (char:char_like) =
+
   let next char state =
-    try
-      CharLikeMap.find char (IntMap.find state maton.transition)
-    with Not_found ->
-    try
-      CharLikeMap.find AnyOther (IntMap.find state maton.transition)
-    with Not_found -> [] in
+    let cmap = try IntMap.find state maton.transition with Not_found -> CharLikeMap.empty in
+    try CharLikeMap.find char cmap with Not_found ->
+    try CharLikeMap.find AnyOther cmap with Not_found -> [] in
   unions (map (next char) states)
 
+
+let collect_states trans =
+  fold_left (fun acc (s, c, slist) -> union (set_add slist s) acc) [] trans
+
+let to_map triples =
+  let assoc = fold_left (fun acc (x, y, z) -> (x, (y, z))::acc) [] triples in
+  let collected = assoc_collect assoc in
+  IntMap.from_alist (map (fun (s, alist) -> (s, CharLikeMap.from_alist alist)) collected)
+
+let to_triples imap =
+  let expand (state, cmap) = map (fun (c, slist) -> (state, c, slist)) (CharLikeMap.bindings cmap) in
+  unions (map expand (IntMap.bindings imap))
+
 let cons ?(dictate=true) alph trans inits finals =
-  let collect_states trans =
-    fold_left (fun acc (s, c, slist) -> union (set_add slist s) acc) [] trans in
-  let to_map triples =
-    let assoc = fold_left (fun acc (x, y, z) -> (hash x, (y, map hash z))::acc) [] triples in
-    let collected = assoc_collect assoc in
-    IntMap.from_alist (map (fun (s, alist) -> (s, CharLikeMap.from_alist alist)) collected) in
   let dic = if dictate then map (fun s -> (hash s, s)) (collect_states trans) else [] in
   {
     alphabet = alph;
-    transition = to_map trans;
+    transition = to_map (map (fun (x, y, z) -> (hash x, y, map hash z)) trans);
     initial_states = map hash inits;
     final_states = map hash finals;
     dictionary = dic
   }
 
 let saturate maton states =
+  let lookup_nexts maton (states:state list) (char:char_like) =
+    let next char state =
+      try
+        CharLikeMap.find char (IntMap.find state maton.transition)
+      with Not_found -> [] in (* don't look for AnyOther *)
+    unions (map (next char) states) in
   let rec loop prev =
     let to_add = lookup_nexts maton prev Empty in
     if subset to_add prev then prev
@@ -111,8 +122,29 @@ let to_dfa = fun maton ->
     (map (assoc_r maton.dictionary) new_init)
     (map (map (assoc_r maton.dictionary)) !new_finals)
 
-let any = cons [] [(0, AnyOther, [0])] [0] [0] ~dictate:false
+let any = cons [] [(0, AnyOther, [1])] [0] [1]
+
 let just str = cons [str] [(0, Char str, [1])] [0] [1]
+
+let repeat maton =
+  let new_trans_triples =
+    unions (all_pairs
+              (fun init final ->
+                 [(init, Empty, [final]); (final, Empty, [init])])
+              maton.initial_states maton.final_states) in
+  let mapped = to_map new_trans_triples in
+  let unioned =
+    IntMap.union
+      (fun _ cmap1 cmap2 ->
+         Some (CharLikeMap.union (fun _ s1 s2 -> Some (union s1 s2)) cmap1 cmap2))
+      mapped maton.transition in
+  {
+    alphabet = maton.alphabet;
+    transition = unioned;
+    initial_states = maton.initial_states;
+    final_states = maton.final_states;
+    dictionary = maton.dictionary
+  }
 
 let string_of_char_like = function
   | Empty -> "ε"

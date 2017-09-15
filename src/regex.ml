@@ -3,16 +3,12 @@ open ListExt
 open NFA
 open RegexSyntax
 
-let literals lst =
-  let rec literals_rec = function
-    | Any -> ["."]
-    | Char s -> [s]
-    | Repeat re -> "*"::literals_rec re
-    | Anyof lst -> "[" :: "]" :: lst
-    | Concat lst -> "(" :: ")" :: unions (map literals_rec lst) in
-  unions (map literals_rec lst)
+let parse str = Parser.toplevel Lexer.main (Lexing.from_string str)
 
-let rec compile = function
-  | Any -> any
-  | Char s -> just s
-  | _ -> any
+let compile str =
+  let rec compile_sub = function
+    | Any -> any
+    | Char s -> just s
+    | Repeat re -> repeat (compile_sub re)
+    | _ -> any
+  in compile_sub (parse str)

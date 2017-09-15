@@ -37,7 +37,8 @@ let dfa () =
 
   assert_equal (DFA.run maton "") false;
   assert_equal (DFA.run maton "0101111") true;
-  assert_equal (DFA.run maton "01011110") false
+  assert_equal (DFA.run maton "01011110") false;
+  ()
 
 let nfa () =
   (* regex ".*1..." *)
@@ -54,7 +55,8 @@ let nfa () =
   assert_equal (NFA.run maton "") false;
   assert_equal (NFA.run maton "100") true;
   assert_equal (NFA.run maton "011011100100") true;
-  assert_equal (NFA.run maton "11101010010101011") false
+  assert_equal (NFA.run maton "11101010010101011") false;
+  ()
 
 let nfa_converted () =
   (* regex ".*1..." *)
@@ -73,7 +75,8 @@ let nfa_converted () =
   assert_equal (DFA.run converted "") false;
   assert_equal (DFA.run converted "100") true;
   assert_equal (DFA.run converted "011011100100") true;
-  assert_equal (DFA.run converted "11101010010101011") false
+  assert_equal (DFA.run converted "11101010010101011") false;
+  ()
 
 let enfa () =
   (* regex "[0*][1*][2*]" *)
@@ -90,7 +93,8 @@ let enfa () =
   assert_equal (NFA.run maton "12") true;
   assert_equal (NFA.run maton "01210") false;
   assert_equal (NFA.run maton "000111111111111112222222222") true;
-  assert_equal (NFA.run maton "00000011111112222220000000") false
+  assert_equal (NFA.run maton "00000011111112222220000000") false;
+  ()
 
 let enfa_converted () =
   (* regex "[0*][1*][2*]" *)
@@ -108,7 +112,8 @@ let enfa_converted () =
   assert_equal (DFA.run maton "12") true;
   assert_equal (DFA.run maton "01210") false;
   assert_equal (DFA.run maton "000111111111111112222222222") true;
-  assert_equal (DFA.run maton "00000011111112222220000000") false
+  assert_equal (DFA.run maton "00000011111112222220000000") false;
+  ()
 
 let dfa_minimized () =
   let maton = DFA.cons ["0"; "1"]
@@ -131,17 +136,34 @@ let dfa_minimized () =
   assert_equal (DFA.run maton "1") true;
   assert_equal (DFA.run maton "0000010000") true;
   assert_equal (DFA.run maton "000000111101010011111") false;
-  assert_equal (DFA.run maton "00001000000") true
+  assert_equal (DFA.run maton "00001000000") true;
+  ()
 
 let helper_nfas _ =
-  assert_equal (NFA.run NFA.any "") true;
-  assert_equal (NFA.run NFA.any "hello world") true;
-  assert_equal (NFA.run NFA.any "こんにちは、世界") true;
+  assert_equal (NFA.run NFA.any "") false;
+  assert_equal (NFA.run NFA.any "a") true;
+  assert_equal (NFA.run NFA.any "b") true;
+  assert_equal (NFA.run NFA.any "abcd") false;
 
-  assert_equal (NFA.run (NFA.just "r") "") false;
-  assert_equal (NFA.run (NFA.just "r") "r") true;
-  assert_equal (NFA.run (NFA.just "r") "rw+") false
+  let just_r = NFA.just "r" in
+  assert_equal (NFA.run just_r "") false;
+  assert_equal (NFA.run just_r "r") true;
+  assert_equal (NFA.run just_r "rw+") false;
 
+  let repeat_r = NFA.repeat just_r in
+  assert_equal (NFA.run repeat_r "") true;
+  assert_equal (NFA.run repeat_r "r") true;
+  assert_equal (NFA.run repeat_r "rrrrr") true;
+  assert_equal (NFA.run repeat_r "rrrrrrsrsrr") false;
+  ()
+
+let regex _ =
+  let any = Regex.compile "." in
+  assert_equal (NFA.run any "") false;
+  assert_equal (NFA.run any "a") true;
+  assert_equal (NFA.run any "b") true;
+  assert_equal (NFA.run any "abcd") false;
+  ()
 
 let suite =
   "suite" >::: [
@@ -151,6 +173,7 @@ let suite =
     "eNFA" >:: enfa;
     "eNFA Converted" >:: enfa_converted;
     "helper NFAs" >:: helper_nfas;
+    "regex" >:: regex
   ]
 
 let _ = run_test_tt_main suite
