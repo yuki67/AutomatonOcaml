@@ -2,29 +2,6 @@ open OUnit
 open MyExt
 open ListExt
 open Automaton
-open NFA
-
-let save_stdout f filename =
-  let oldstdout = Unix.dup Unix.stdout in
-  let newstdout = open_out filename in
-  Unix.dup2 (Unix.descr_of_out_channel newstdout) Unix.stdout;
-  f ();
-  flush stdout;
-  Unix.close (Unix.descr_of_out_channel newstdout);
-  Unix.dup2 oldstdout Unix.stdout
-
-let file_diff a b =
-  let rec loop () = if (input_line a) <> (input_line b) then false else loop ();
-  in try loop () with _ -> true
-
-let stdout_diff f expected =
-  let _ = save_stdout f "temp" in
-  let ret_val = file_diff (open_in expected) (open_in "temp") in
-  Sys.remove "temp";
-  ret_val
-
-let assert_output f expected =
-  assert_equal (stdout_diff f expected) true
 
 let dfa () =
   (* x accepted <-> x[-1] == 1 *)
@@ -140,29 +117,48 @@ let dfa_minimized () =
   ()
 
 let helper_nfas _ =
-  assert_equal (NFA.run NFA.any "") false;
-  assert_equal (NFA.run NFA.any "a") true;
-  assert_equal (NFA.run NFA.any "b") true;
-  assert_equal (NFA.run NFA.any "abcd") false;
+  assert_equal (RegexNFA.run RegexNFA.any "") false;
+  assert_equal (RegexNFA.run RegexNFA.any "a") true;
+  assert_equal (RegexNFA.run RegexNFA.any "b") true;
+  assert_equal (RegexNFA.run RegexNFA.any "abcd") false;
 
-  let just_r = NFA.just "r" in
-  assert_equal (NFA.run just_r "") false;
-  assert_equal (NFA.run just_r "r") true;
-  assert_equal (NFA.run just_r "rw+") false;
+  let just_r = RegexNFA.just "r" in
+  assert_equal (RegexNFA.run just_r "") false;
+  assert_equal (RegexNFA.run just_r "r") true;
+  assert_equal (RegexNFA.run just_r "rw+") false;
 
-  let repeat_r = NFA.repeat just_r in
-  assert_equal (NFA.run repeat_r "") true;
-  assert_equal (NFA.run repeat_r "r") true;
-  assert_equal (NFA.run repeat_r "rrrrr") true;
-  assert_equal (NFA.run repeat_r "rrrrrrsrsrr") false;
+  let repeat_r = RegexNFA.repeat just_r in
+  assert_equal (RegexNFA.run repeat_r "") true;
+  assert_equal (RegexNFA.run repeat_r "r") true;
+  assert_equal (RegexNFA.run repeat_r "rrrrr") true;
+  assert_equal (RegexNFA.run repeat_r "rrrrrrsrsrr") false;
   ()
 
 let regex _ =
   let any = Regex.compile "." in
-  assert_equal (NFA.run any "") false;
-  assert_equal (NFA.run any "a") true;
-  assert_equal (NFA.run any "b") true;
-  assert_equal (NFA.run any "abcd") false;
+  assert_equal (Regex.run any "") false;
+  assert_equal (Regex.run any "a") true;
+  assert_equal (Regex.run any "b") true;
+  assert_equal (Regex.run any "abcd") false;
+
+  let all = Regex.compile ".*" in
+  assert_equal (Regex.run all "") true;
+  assert_equal (Regex.run all "a") true;
+  assert_equal (Regex.run all "b") true;
+  assert_equal (Regex.run all "abcd") true;
+
+  let all = Regex.compile "(ab)*" in
+  assert_equal (Regex.run all "") true;
+  assert_equal (Regex.run all "ab") true;
+  assert_equal (Regex.run all "abababab") true;
+  assert_equal (Regex.run all "ababababc") false;
+
+  let all = Regex.compile ".(abc)*." in
+  assert_equal (Regex.run all "") false;
+  assert_equal (Regex.run all "XY") true;
+  assert_equal (Regex.run all "XabcY") true;
+  assert_equal (Regex.run all "XabcabcabcY") true;
+  assert_equal (Regex.run all "XabcabcabcabceYabc") false;
   ()
 
 let suite =

@@ -23,14 +23,12 @@
 %%
 
 toplevel:
-  | atom EOF    { $1 }
   | atoms EOF   { Concat ($1) }
-  | EOF          { Concat ([]) }
 ;
 
 atoms:
   | atom atoms           { $1::$2 }
-  |                       { [] }
+  |                      { [] }
 ;
 
 atom:
