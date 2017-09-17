@@ -7,6 +7,7 @@ rule main = parse
 | space+       { main lexbuf }
 | "*"          { Parser.ASTER }
 | "."          { Parser.DOT }
+| "|"          { Parser.BAR }
 | "("          { Parser.LPAR }
 | ")"          { Parser.RPAR }
 | "["          { Parser.LSPAR }

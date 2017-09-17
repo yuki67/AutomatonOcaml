@@ -10,5 +10,6 @@ val any : t
 val just : string -> t
 val repeat : t -> t
 val concat : t list -> t
+val anyof : t list -> t
 
 val print_nfa : t -> unit

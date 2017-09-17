@@ -59,11 +59,11 @@ let run maton str =
 
 let to_dfa = fun maton ->
   let init = (saturate maton maton.initial) in
-  let finals' =
+  let finals =
     if anything_in_common init maton.finals
     then ref [init]
     else ref [] in
-  let new_trans = ref [] in
+  let trans = ref [] in
   let rec loop searched to_search =
     match to_search with
     | [] -> ()
@@ -71,14 +71,14 @@ let to_dfa = fun maton ->
         let nexts_triplet =
           image (fun c -> state, c, transit maton state c) maton.alphabet in
         let nexts = map (fun (_, _, x) -> x) nexts_triplet in
-        new_trans := nexts_triplet @ !new_trans;
-        finals' := nexts
-                   |> filter (anything_in_common maton.finals)
-                   |> union !finals';
+        trans := nexts_triplet @ !trans;
+        finals := nexts
+                  |> filter (anything_in_common maton.finals)
+                  |> union !finals;
         loop (set_add searched state) (union tl (diff nexts (state::searched)))
   in
   let _ = loop [] [init] in
-  DFA.cons maton.alphabet !new_trans init !finals'
+  DFA.cons maton.alphabet !trans init !finals
 
 let string_of_char_like = function
   | Empty -> "ε"

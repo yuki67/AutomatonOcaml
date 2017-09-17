@@ -12,7 +12,7 @@ let compile str =
     | Char s -> RegexNFA.just s
     | Repeat re -> RegexNFA.repeat (compile_sub re)
     | Concat res -> RegexNFA.concat (map compile_sub res)
-    | _ -> RegexNFA.any
+    | Anyof res -> RegexNFA.anyof (map compile_sub res)
   in compile_sub (parse str)
 
 let run it str = RegexNFA.run it str

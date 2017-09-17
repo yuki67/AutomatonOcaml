@@ -23,10 +23,10 @@ struct
     | Empty, AnyOther -> 1
     | AnyOther, Empty -> -1
     | Char p, Char q -> String.compare p q
-    | _, AnyOther -> 2
-    | _, Empty -> 1
-    | AnyOther, _ -> -2
-    | Empty, _ -> -1
+    | Char _, AnyOther -> 2
+    | Char _, Empty -> 1
+    | AnyOther, Char _ -> -2
+    | Empty, Char _ -> -1
 end
 module CharLikeMap = MapExt.Make (OrderedCharLike)
 
@@ -44,6 +44,54 @@ let get_trans x = x.transition
 let get_inits x = x.initials
 let get_finals x = x.finals
 
+let to_map triples =
+  let assoc = fold_left (fun acc (x, y, z) -> (x, (y, z))::acc) [] triples in
+  let collected = assoc_collect assoc in
+  IntMap.from_alist
+    (map (fun (s, alist) -> (s, CharLikeMap.from_alist alist)) collected)
+
+let to_triples imap =
+  let expand (state, cmap) =
+    map (fun (c, slist) -> (state, c, slist)) (CharLikeMap.bindings cmap) in
+  unions (map expand (IntMap.bindings imap))
+
+open Printf
+
+let string_of_char_like = function
+  | Empty -> "ε"
+  | AnyOther -> "other"
+  | Char c -> c
+
+let print_trans t =
+  iter
+    (fun (x, y, z) ->
+       printf "%d -- %s --> %s\n"
+         x (string_of_char_like y) (string_of_list string_of_int z))
+    (to_triples t)
+
+let print_nfa maton =
+  let string_of_state = string_of_int in
+  let print_a_to_b a c b =
+    printf "\"%s\" -> \"%s\" [label = \"%s\"]\n"
+      (string_of_state a) (string_of_state b) (string_of_char_like c) in
+  printf "digraph finite_state_machine {\n";
+  printf "rankdir=LR\n";
+  printf "node [shape = point] init\n";
+  printf "node [shape = ellipse, peripheries=2]\n";
+  iter
+    (fun s -> printf "\"%s\"" (string_of_state s))
+    maton.finals;
+  printf "\nnode [shape = ellipse, peripheries=1];\n";
+  iter
+    (fun s -> printf "init -> \"%s\"" (string_of_state s))
+    maton.initials;
+  printf "\nnode [shape = ellipse, peripheries=1]\n";
+  IntMap.iter
+    (fun s cmap ->
+       CharLikeMap.iter (fun c slist -> iter (print_a_to_b s c) slist) cmap)
+    maton.transition;
+  printf "}\n"
+
 let lookup_nexts maton (states:state list) (char:char_like) =
   let next char state =
     let cmap =
@@ -55,17 +103,6 @@ let lookup_nexts maton (states:state list) (char:char_like) =
 
 let collect_states trans =
   fold_left (fun acc (s, c, slist) -> union (set_add slist s) acc) [] trans
-
-let to_map triples =
-  let assoc = fold_left (fun acc (x, y, z) -> (x, (y, z))::acc) [] triples in
-  let collected = assoc_collect assoc in
-  IntMap.from_alist
-    (map (fun (s, alist) -> (s, CharLikeMap.from_alist alist)) collected)
-
-let to_triples imap =
-  let expand (state, cmap) =
-    map (fun (c, slist) -> (state, c, slist)) (CharLikeMap.bindings cmap) in
-  unions (map expand (IntMap.bindings imap))
 
 let cons alph trans inits finals =
   {
@@ -133,10 +170,8 @@ let just str = cons [str] [(0, Char str, [1])] [0] [1]
 
 let repeat maton =
   let new_trans =
-    all_pairs
-      (fun init final ->
-         [(init, Empty, [final]); (final, Empty, [init])])
-      maton.initials maton.finals
+    map (fun init -> [(init, Empty, maton.finals)]) maton.initials @
+    map (fun final -> [(final, Empty, maton.initials)]) maton.finals
     |> unions
     |> to_map
     |> trans_union maton.transition in
@@ -165,8 +200,8 @@ let hashi i maton =
     maton
 
 let concat nfas =
-  let a_to_b a b = (a, Empty, [b]) in
-  let nfas = mapi hashi nfas in
+  let a_to_b a b = (a, Empty, [b])
+  and nfas = mapi hashi nfas in
   let new_trans =
     adjacent_pairs
       (fun prev next -> all_pairs a_to_b prev.finals next.initials)
@@ -175,37 +210,17 @@ let concat nfas =
     |> to_map
     |> trans_union (fold_left trans_union IntMap.empty (map get_trans nfas)) in
   {
-    alphabet = unions (map get_alph nfas);
+    alphabet = union_map get_alph nfas;
     transition = new_trans;
     initials = (hd nfas).initials;
     finals = (last nfas).finals;
   }
 
-let string_of_char_like = function
-  | Empty -> "ε"
-  | AnyOther -> "other"
-  | Char c -> c
-
-open Printf
-let print_nfa maton =
-  let string_of_state = string_of_int in
-  let print_a_to_b a c b =
-    printf "\"%s\" -> \"%s\" [label = \"%s\"]\n"
-      (string_of_state a) (string_of_state b) (string_of_char_like c) in
-  printf "digraph finite_state_machine {\n";
-  printf "rankdir=LR\n";
-  printf "node [shape = point] init\n";
-  printf "node [shape = ellipse, peripheries=2]\n";
-  iter
-    (fun s -> printf "\"%s\"" (string_of_state s))
-    maton.finals;
-  printf "\nnode [shape = ellipse, peripheries=1];\n";
-  iter
-    (fun s -> printf "init -> \"%s\"" (string_of_state s))
-    maton.initials;
-  printf "\nnode [shape = ellipse, peripheries=1]\n";
-  IntMap.iter
-    (fun s cmap ->
-       CharLikeMap.iter (fun c slist -> iter (print_a_to_b s c) slist) cmap)
-    maton.transition;
-  printf "}\n"
+let anyof nfas =
+  let nfas = mapi hashi nfas in
+  {
+    alphabet = union_map get_alph nfas;
+    transition = fold_left trans_union IntMap.empty (map get_trans nfas);
+    initials = union_map get_inits nfas;
+    finals = union_map get_finals nfas;
+  }

@@ -135,30 +135,35 @@ let helper_nfas _ =
   ()
 
 let regex _ =
-  let any = Regex.compile "." in
-  assert_equal (Regex.run any "") false;
-  assert_equal (Regex.run any "a") true;
-  assert_equal (Regex.run any "b") true;
-  assert_equal (Regex.run any "abcd") false;
+  let regex_test str trues falses =
+    let re = Regex.compile str in
+    iter (fun test -> assert_equal (Regex.run re test) true) trues;
+    iter (fun test -> assert_equal (Regex.run re test) false) falses in
 
-  let all = Regex.compile ".*" in
-  assert_equal (Regex.run all "") true;
-  assert_equal (Regex.run all "a") true;
-  assert_equal (Regex.run all "b") true;
-  assert_equal (Regex.run all "abcd") true;
+  regex_test "."
+    ["a"; "b"; "c"]
+    [""; "ab"; "abc"];
 
-  let all = Regex.compile "(ab)*" in
-  assert_equal (Regex.run all "") true;
-  assert_equal (Regex.run all "ab") true;
-  assert_equal (Regex.run all "abababab") true;
-  assert_equal (Regex.run all "ababababc") false;
+  regex_test ".*"
+    [""; "a"; "b"; "abc"; "hello world!"]
+    [];
 
-  let all = Regex.compile ".(abc)*." in
-  assert_equal (Regex.run all "") false;
-  assert_equal (Regex.run all "XY") true;
-  assert_equal (Regex.run all "XabcY") true;
-  assert_equal (Regex.run all "XabcabcabcY") true;
-  assert_equal (Regex.run all "XabcabcabcabceYabc") false;
+  regex_test "(ab)*"
+    [""; "ab"; "ababababababab"]
+    ["a"; "aba"; "abc"];
+
+  regex_test ".(abc)*."
+    ["XY"; "XabcY"; "XabcabcabcY"]
+    [""; "XabcYabc"];
+
+  regex_test "[abc]*"
+    [""; "a"; "b"; "c"; "abcacbacb"; "acbacbacacbaaaa"]
+    ["d"; "abcacbcad"; "dkslfheoiwuf"];
+
+  regex_test "(bor|interest)ing"
+    ["boring";"interesting"]
+    [""; "ing"; "borinteresting"];
+
   ()
 
 let suite =

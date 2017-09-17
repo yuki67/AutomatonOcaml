@@ -1,20 +1,11 @@
 %{
   open RegexSyntax
-  open MyExt
-  open ListExt
-  let literals lst =
-    let rec literals_rec = function
-      | Any -> ["."]
-      | Char s -> [s]
-      | Repeat re -> "*"::literals_rec re
-      | Anyof lst -> "[" :: "]" :: lst
-      | Concat lst -> "(" :: ")" :: unions (map literals_rec lst) in
-    unions (map literals_rec lst)
 %}
 
-%token ASTER DOT
+%token BAR
 %token LPAR RPAR
 %token LSPAR RSPAR
+%token ASTER DOT
 %token <string> ID
 %token EOF
 
@@ -23,18 +14,28 @@
 %%
 
 toplevel:
-  | atoms EOF   { Concat ($1) }
+  | regex EOF              { $1 }
 ;
 
-atoms:
-  | atom atoms           { $1::$2 }
-  |                      { [] }
+regex:
+  | alternative            { $1 }
 ;
+
+alternative:
+  | concat BAR alternative { cc_anyof $1 $3 }
+  | concat                 { $1 }
+;
+
+concat:
+  | atom concat            { cc_concat $1 $2 }
+  | atom                   { $1 }
+;
+
 
 atom:
-  | DOT                  { Any }
-  | ID                   { Char ($1) }
-  | atom ASTER           { Repeat ($1) }
-  | LSPAR atoms RSPAR    { Anyof (literals $2) }
-  | LPAR atoms RPAR      { Concat ($2) }
+  | DOT                    { Any }
+  | ID                     { Char ($1) }
+  | atom ASTER             { Repeat ($1) }
+  | LSPAR regex RSPAR      { Anyof (literals $2) }
+  | LPAR regex RPAR        { $2 }
 ;
